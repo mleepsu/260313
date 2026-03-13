@@ -79,6 +79,83 @@ const topicGrid = $('#topic-grid');
 const contentSection = $('#content-section');
 const contentTitle = $('#content-title');
 const contentBadge = $('#content-badge');
+const heroSection = $('#hero-section');
+
+// ─── Particle Background ───
+function initParticles() {
+  const canvas = document.getElementById('particle-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  const PARTICLE_COUNT = 60;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = Math.random() * canvas.width;
+      this.y = Math.random() * canvas.height;
+      this.size = Math.random() * 2 + 0.5;
+      this.speedX = (Math.random() - 0.5) * 0.3;
+      this.speedY = (Math.random() - 0.5) * 0.3;
+      this.opacity = Math.random() * 0.5 + 0.1;
+      // Color: mix of indigo and cyan
+      const r = Math.random();
+      if (r < 0.33) { this.color = '99,102,241'; }
+      else if (r < 0.66) { this.color = '6,182,212'; }
+      else { this.color = '139,92,246'; }
+    }
+    update() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+      if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
+      if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${this.color},${this.opacity})`;
+      ctx.fill();
+    }
+  }
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(new Particle());
+  }
+
+  function drawConnections() {
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(99,102,241,${0.06 * (1 - dist / 150)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => { p.update(); p.draw(); });
+    drawConnections();
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+}
 
 // ─── Init ───
 function init() {
@@ -88,6 +165,7 @@ function init() {
     modal.classList.add('hidden');
   }
 
+  initParticles();
   renderCategories();
   bindEvents();
 }
@@ -113,6 +191,7 @@ function showCategories() {
   categoriesSection.classList.remove('hidden');
   topicsSection.classList.add('hidden');
   contentSection.classList.add('hidden');
+  heroSection.classList.remove('hidden');
 }
 
 function showTopics(categoryKey) {
@@ -120,8 +199,10 @@ function showTopics(categoryKey) {
   const cat = SCIENCE_DATA[categoryKey];
   categoriesSection.classList.add('hidden');
   contentSection.classList.add('hidden');
+  heroSection.classList.add('hidden');
   topicsSection.classList.remove('hidden');
-  topicsTitle.textContent = `${cat.icon} ${cat.name} 주제`;
+  topicsTitle.textContent = `${cat.icon} ${cat.name}`;
+  $('#topics-desc').textContent = `${cat.description} — 학습할 주제를 선택하세요`;
   renderTopics(cat.topics, categoryKey);
 }
 
@@ -133,6 +214,7 @@ function showContent(categoryKey, topicId) {
 
   categoriesSection.classList.add('hidden');
   topicsSection.classList.add('hidden');
+  heroSection.classList.add('hidden');
   contentSection.classList.remove('hidden');
 
   contentTitle.textContent = `${topic.emoji} ${topic.title}`;
@@ -147,10 +229,12 @@ function renderCategories() {
   for (const [key, cat] of Object.entries(SCIENCE_DATA)) {
     const div = document.createElement('div');
     div.className = 'category-card';
+    div.setAttribute('data-category', key);
     div.innerHTML = `
-      <div class="category-icon">${cat.icon}</div>
+      <div class="category-icon-wrap">${cat.icon}</div>
       <h3>${cat.name}</h3>
       <p>${cat.description}</p>
+      <span class="category-count">${cat.topics.length}개 주제</span>
     `;
     div.addEventListener('click', () => showTopics(key));
     categoryGrid.appendChild(div);
@@ -165,8 +249,8 @@ function renderTopics(topics, categoryKey) {
     div.innerHTML = `
       <span class="topic-emoji">${topic.emoji}</span>
       <div class="topic-info">
-        <h4>${topic.title}</h4>
-        <p>${topic.desc} · ${topic.grade}</p>
+        <h4>${topic.title}<span class="topic-grade">${topic.grade}</span></h4>
+        <p>${topic.desc}</p>
       </div>
     `;
     div.addEventListener('click', () => showContent(categoryKey, topic.id));
@@ -231,7 +315,7 @@ async function loadContent(categoryName, topic) {
 
   // Reset all sections to loading state
   setLoading('concept-text');
-  setLoading('concept-image');
+  setLoadingImage('concept-image');
   setLoading('keypoints-text');
   setLoading('quiz-content');
 
@@ -244,13 +328,27 @@ async function loadContent(categoryName, topic) {
 
 function setLoading(elementId) {
   document.getElementById(elementId).innerHTML = `
-    <div class="loading-spinner"></div>
-    <p class="loading-text">AI가 내용을 준비하고 있어요...</p>
+    <div class="skeleton-loader">
+      <div class="skeleton-line w100"></div>
+      <div class="skeleton-line w90"></div>
+      <div class="skeleton-line w95"></div>
+      <div class="skeleton-line w80"></div>
+      <div class="skeleton-line w85"></div>
+    </div>
+  `;
+}
+
+function setLoadingImage(elementId) {
+  document.getElementById(elementId).innerHTML = `
+    <div class="image-placeholder">
+      <div class="loading-pulse"></div>
+      <p>AI가 이미지를 생성하고 있습니다</p>
+    </div>
   `;
 }
 
 function setError(elementId, message) {
-  document.getElementById(elementId).innerHTML = `<p class="error-text">⚠️ ${message}</p>`;
+  document.getElementById(elementId).innerHTML = `<p class="error-text">${message}</p>`;
 }
 
 async function loadConcept(categoryName, topic) {
@@ -338,7 +436,6 @@ async function loadQuiz(categoryName, topic) {
 answer는 정답의 인덱스(0~3)입니다. 중학생 수준에 맞는 문제를 만드세요.`;
 
     const text = await callGeminiText(prompt);
-    // Extract JSON from response
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('퀴즈를 생성하지 못했습니다.');
 
@@ -373,14 +470,13 @@ function renderQuiz(quizzes) {
 
     const explDiv = document.createElement('div');
     explDiv.className = 'quiz-explanation';
-    explDiv.textContent = `💡 ${quiz.explanation}`;
+    explDiv.textContent = quiz.explanation;
 
     quiz.options.forEach((opt, oIndex) => {
       const btn = document.createElement('button');
       btn.className = 'quiz-option';
-      btn.textContent = `${['①','②','③','④'][oIndex]} ${opt}`;
+      btn.textContent = `${['A','B','C','D'][oIndex]}.  ${opt}`;
       btn.addEventListener('click', () => {
-        // Disable all options in this question
         optionsDiv.querySelectorAll('.quiz-option').forEach(b => b.classList.add('disabled'));
         if (oIndex === quiz.answer) {
           btn.classList.add('correct');
