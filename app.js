@@ -81,13 +81,18 @@ const contentTitle = $('#content-title');
 const contentBadge = $('#content-badge');
 const heroSection = $('#hero-section');
 
-// ─── Particle Background ───
+// ═══════════════════════════════════
+// ENHANCED PARTICLE SYSTEM
+// with mouse interaction & trails
+// ═══════════════════════════════════
 function initParticles() {
   const canvas = document.getElementById('particle-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   let particles = [];
-  const PARTICLE_COUNT = 60;
+  const PARTICLE_COUNT = 80;
+  let mouse = { x: -1000, y: -1000 };
+  const MOUSE_RADIUS = 180;
 
   function resize() {
     canvas.width = window.innerWidth;
@@ -96,28 +101,60 @@ function initParticles() {
   resize();
   window.addEventListener('resize', resize);
 
+  // Track mouse for interactive particles
+  document.addEventListener('mousemove', (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  });
+
   class Particle {
-    constructor() { this.reset(); }
-    reset() {
-      this.x = Math.random() * canvas.width;
-      this.y = Math.random() * canvas.height;
-      this.size = Math.random() * 2 + 0.5;
-      this.speedX = (Math.random() - 0.5) * 0.3;
-      this.speedY = (Math.random() - 0.5) * 0.3;
-      this.opacity = Math.random() * 0.5 + 0.1;
-      // Color: mix of indigo and cyan
+    constructor() { this.reset(true); }
+    reset(initial) {
+      this.x = initial ? Math.random() * canvas.width : Math.random() * canvas.width;
+      this.y = initial ? Math.random() * canvas.height : Math.random() * canvas.height;
+      this.baseSize = Math.random() * 2 + 0.5;
+      this.size = this.baseSize;
+      this.speedX = (Math.random() - 0.5) * 0.4;
+      this.speedY = (Math.random() - 0.5) * 0.4;
+      this.baseOpacity = Math.random() * 0.5 + 0.15;
+      this.opacity = this.baseOpacity;
       const r = Math.random();
       if (r < 0.33) { this.color = '99,102,241'; }
       else if (r < 0.66) { this.color = '6,182,212'; }
       else { this.color = '139,92,246'; }
+      this.targetX = this.x;
+      this.targetY = this.y;
     }
     update() {
+      // Mouse repulsion
+      const dx = this.x - mouse.x;
+      const dy = this.y - mouse.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < MOUSE_RADIUS) {
+        const force = (MOUSE_RADIUS - dist) / MOUSE_RADIUS;
+        const angle = Math.atan2(dy, dx);
+        this.x += Math.cos(angle) * force * 3;
+        this.y += Math.sin(angle) * force * 3;
+        this.size = this.baseSize + force * 3;
+        this.opacity = Math.min(1, this.baseOpacity + force * 0.5);
+      } else {
+        this.size += (this.baseSize - this.size) * 0.05;
+        this.opacity += (this.baseOpacity - this.opacity) * 0.05;
+      }
+
       this.x += this.speedX;
       this.y += this.speedY;
       if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
       if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
     }
     draw() {
+      // Glow effect
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${this.color},${this.opacity * 0.1})`;
+      ctx.fill();
+
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${this.color},${this.opacity})`;
@@ -135,14 +172,29 @@ function initParticles() {
         const dx = particles[i].x - particles[j].x;
         const dy = particles[i].y - particles[j].y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 150) {
+        if (dist < 160) {
+          const opacity = 0.08 * (1 - dist / 160);
           ctx.beginPath();
           ctx.moveTo(particles[i].x, particles[i].y);
           ctx.lineTo(particles[j].x, particles[j].y);
-          ctx.strokeStyle = `rgba(99,102,241,${0.06 * (1 - dist / 150)})`;
-          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = `rgba(99,102,241,${opacity})`;
+          ctx.lineWidth = 0.6;
           ctx.stroke();
         }
+      }
+
+      // Connect to mouse if close
+      const dmx = particles[i].x - mouse.x;
+      const dmy = particles[i].y - mouse.y;
+      const distMouse = Math.sqrt(dmx * dmx + dmy * dmy);
+      if (distMouse < MOUSE_RADIUS) {
+        const opacity = 0.15 * (1 - distMouse / MOUSE_RADIUS);
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(mouse.x, mouse.y);
+        ctx.strokeStyle = `rgba(6,182,212,${opacity})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
       }
     }
   }
@@ -155,6 +207,74 @@ function initParticles() {
   }
 
   animate();
+}
+
+// ═══════════════════════════════════
+// RIPPLE EFFECT on buttons
+// ═══════════════════════════════════
+function addRipple(e) {
+  const btn = e.currentTarget;
+  const ripple = document.createElement('span');
+  ripple.className = 'ripple';
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  ripple.style.width = ripple.style.height = size + 'px';
+  ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+  ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+  btn.appendChild(ripple);
+  ripple.addEventListener('animationend', () => ripple.remove());
+}
+
+// ═══════════════════════════════════
+// STAGGER ANIMATION HELPER
+// ═══════════════════════════════════
+function staggerAnimate(elements, className, baseDelay = 0, increment = 80) {
+  elements.forEach((el, i) => {
+    setTimeout(() => {
+      el.classList.add(className);
+    }, baseDelay + i * increment);
+  });
+}
+
+// ═══════════════════════════════════
+// PAGE TRANSITION HELPERS
+// ═══════════════════════════════════
+function transitionOut(section) {
+  return new Promise((resolve) => {
+    if (!section || section.classList.contains('hidden')) {
+      resolve();
+      return;
+    }
+    section.classList.add('section-exiting');
+    setTimeout(() => {
+      section.classList.add('hidden');
+      section.classList.remove('section-exiting');
+      resolve();
+    }, 250);
+  });
+}
+
+function transitionIn(section) {
+  section.classList.remove('hidden');
+  section.classList.add('page-section');
+  // Clean up class after animation
+  setTimeout(() => section.classList.remove('page-section'), 600);
+}
+
+// ═══════════════════════════════════
+// COUNTER ANIMATION
+// ═══════════════════════════════════
+function animateCounter(element, target) {
+  let current = 0;
+  const step = Math.ceil(target / 15);
+  const interval = setInterval(() => {
+    current += step;
+    if (current >= target) {
+      current = target;
+      clearInterval(interval);
+    }
+    element.textContent = `${current}개 주제`;
+  }, 40);
 }
 
 // ─── Init ───
@@ -171,61 +291,105 @@ function init() {
 }
 
 function bindEvents() {
-  $('#api-key-submit').addEventListener('click', submitApiKey);
+  const submitBtn = $('#api-key-submit');
+  submitBtn.addEventListener('click', (e) => { addRipple(e); submitApiKey(); });
   apiKeyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitApiKey(); });
   $('#change-api-key').addEventListener('click', () => modal.classList.remove('hidden'));
-  $('#btn-back-categories').addEventListener('click', showCategories);
-  $('#btn-back-topics').addEventListener('click', () => showTopics(currentCategory));
+  $('#btn-back-categories').addEventListener('click', () => navigateToCategories());
+  $('#btn-back-topics').addEventListener('click', () => navigateToTopics(currentCategory));
 }
 
 function submitApiKey() {
   const key = apiKeyInput.value.trim();
-  if (!key) { apiKeyInput.focus(); return; }
+  if (!key) {
+    // Shake input
+    apiKeyInput.style.animation = 'wrongShake 0.5s ease';
+    apiKeyInput.addEventListener('animationend', () => { apiKeyInput.style.animation = ''; }, { once: true });
+    apiKeyInput.focus();
+    return;
+  }
   apiKey = key;
   localStorage.setItem('gemini_api_key', key);
-  modal.classList.add('hidden');
+  // Animate modal out
+  const mc = $('.modal-content');
+  mc.style.animation = 'modalOut 0.3s ease forwards';
+  setTimeout(() => {
+    modal.classList.add('hidden');
+    mc.style.animation = '';
+  }, 300);
 }
 
-// ─── Navigation ───
-function showCategories() {
-  categoriesSection.classList.remove('hidden');
-  topicsSection.classList.add('hidden');
-  contentSection.classList.add('hidden');
-  heroSection.classList.remove('hidden');
+// Add modalOut keyframe dynamically
+const styleSheet = document.createElement('style');
+styleSheet.textContent = `
+  @keyframes modalOut {
+    to { opacity: 0; transform: scale(0.9) translateY(20px); }
+  }
+`;
+document.head.appendChild(styleSheet);
+
+// ─── Navigation with transitions ───
+async function navigateToCategories() {
+  await Promise.all([
+    transitionOut(topicsSection),
+    transitionOut(contentSection)
+  ]);
+  transitionIn(categoriesSection);
+  transitionIn(heroSection);
+  // Re-animate category cards
+  const cards = categoryGrid.querySelectorAll('.category-card');
+  cards.forEach(c => { c.style.animation = 'none'; c.offsetHeight; c.style.animation = ''; });
 }
 
-function showTopics(categoryKey) {
+async function navigateToTopics(categoryKey) {
   currentCategory = categoryKey;
   const cat = SCIENCE_DATA[categoryKey];
-  categoriesSection.classList.add('hidden');
-  contentSection.classList.add('hidden');
-  heroSection.classList.add('hidden');
-  topicsSection.classList.remove('hidden');
+
+  await Promise.all([
+    transitionOut(categoriesSection),
+    transitionOut(contentSection),
+    transitionOut(heroSection)
+  ]);
+
   topicsTitle.textContent = `${cat.icon} ${cat.name}`;
   $('#topics-desc').textContent = `${cat.description} — 학습할 주제를 선택하세요`;
   renderTopics(cat.topics, categoryKey);
+  transitionIn(topicsSection);
 }
 
-function showContent(categoryKey, topicId) {
+async function navigateToContent(categoryKey, topicId) {
   currentCategory = categoryKey;
   const cat = SCIENCE_DATA[categoryKey];
   const topic = cat.topics.find(t => t.id === topicId);
   currentTopic = topic;
 
-  categoriesSection.classList.add('hidden');
-  topicsSection.classList.add('hidden');
-  heroSection.classList.add('hidden');
-  contentSection.classList.remove('hidden');
+  await Promise.all([
+    transitionOut(categoriesSection),
+    transitionOut(topicsSection),
+    transitionOut(heroSection)
+  ]);
 
   contentTitle.textContent = `${topic.emoji} ${topic.title}`;
   contentBadge.textContent = `${cat.name} · ${topic.grade}`;
 
+  transitionIn(contentSection);
+
+  // Animate cards in with stagger
+  const cards = contentSection.querySelectorAll('.card');
+  staggerAnimate(Array.from(cards), 'animate-in', 100, 120);
+
   loadContent(cat.name, topic);
 }
+
+// Legacy wrappers for direct calls
+function showCategories() { navigateToCategories(); }
+function showTopics(key) { navigateToTopics(key); }
+function showContent(key, id) { navigateToContent(key, id); }
 
 // ─── Render ───
 function renderCategories() {
   categoryGrid.innerHTML = '';
+  let index = 0;
   for (const [key, cat] of Object.entries(SCIENCE_DATA)) {
     const div = document.createElement('div');
     div.className = 'category-card';
@@ -234,16 +398,21 @@ function renderCategories() {
       <div class="category-icon-wrap">${cat.icon}</div>
       <h3>${cat.name}</h3>
       <p>${cat.description}</p>
-      <span class="category-count">${cat.topics.length}개 주제</span>
+      <span class="category-count" data-target="${cat.topics.length}">0개 주제</span>
     `;
-    div.addEventListener('click', () => showTopics(key));
+    div.addEventListener('click', (e) => { addRipple(e); navigateToTopics(key); });
     categoryGrid.appendChild(div);
+
+    // Animate counter after card appears
+    const countEl = div.querySelector('.category-count');
+    setTimeout(() => animateCounter(countEl, cat.topics.length), 500 + index * 200);
+    index++;
   }
 }
 
 function renderTopics(topics, categoryKey) {
   topicGrid.innerHTML = '';
-  topics.forEach(topic => {
+  topics.forEach((topic, i) => {
     const div = document.createElement('div');
     div.className = 'topic-card';
     div.innerHTML = `
@@ -253,9 +422,13 @@ function renderTopics(topics, categoryKey) {
         <p>${topic.desc}</p>
       </div>
     `;
-    div.addEventListener('click', () => showContent(categoryKey, topic.id));
+    div.addEventListener('click', (e) => { addRipple(e); navigateToContent(categoryKey, topic.id); });
     topicGrid.appendChild(div);
   });
+
+  // Stagger animate topic cards
+  const topicCards = topicGrid.querySelectorAll('.topic-card');
+  staggerAnimate(Array.from(topicCards), 'animate-in', 150, 60);
 }
 
 // ─── API Calls ───
@@ -313,13 +486,11 @@ async function loadContent(categoryName, topic) {
     return;
   }
 
-  // Reset all sections to loading state
   setLoading('concept-text');
   setLoadingImage('concept-image');
   setLoading('keypoints-text');
   setLoading('quiz-content');
 
-  // Fire all requests in parallel
   loadConcept(categoryName, topic);
   loadImage(categoryName, topic);
   loadKeypoints(categoryName, topic);
@@ -364,7 +535,9 @@ async function loadConcept(categoryName, topic) {
 4~6 문단으로 작성하고, 존댓말로 친근하게 설명해주세요. 마크다운 서식 없이 일반 텍스트로만 작성하세요.`;
 
     const text = await callGeminiText(prompt);
-    document.getElementById('concept-text').textContent = text;
+    const el = document.getElementById('concept-text');
+    el.textContent = text;
+    el.classList.add('text-revealed');
   } catch (e) {
     setError('concept-text', e.message);
   }
@@ -414,6 +587,10 @@ async function loadKeypoints(categoryName, topic) {
     const container = document.getElementById('keypoints-text');
     container.innerHTML = '';
     container.appendChild(ul);
+
+    // Stagger animate keypoints
+    const items = container.querySelectorAll('li');
+    staggerAnimate(Array.from(items), 'animate-in', 100, 100);
   } catch (e) {
     setError('keypoints-text', e.message);
   }
@@ -480,6 +657,8 @@ function renderQuiz(quizzes) {
         optionsDiv.querySelectorAll('.quiz-option').forEach(b => b.classList.add('disabled'));
         if (oIndex === quiz.answer) {
           btn.classList.add('correct');
+          // Spawn confetti particles
+          spawnConfetti(btn);
         } else {
           btn.classList.add('wrong');
           optionsDiv.children[quiz.answer].classList.add('correct');
@@ -493,6 +672,46 @@ function renderQuiz(quizzes) {
     qDiv.appendChild(explDiv);
     container.appendChild(qDiv);
   });
+}
+
+// ═══════════════════════════════════
+// CONFETTI on correct answer
+// ═══════════════════════════════════
+function spawnConfetti(element) {
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const colors = ['#22c55e', '#6366f1', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+  for (let i = 0; i < 24; i++) {
+    const particle = document.createElement('div');
+    particle.style.cssText = `
+      position: fixed;
+      width: ${Math.random() * 8 + 4}px;
+      height: ${Math.random() * 8 + 4}px;
+      background: ${colors[Math.floor(Math.random() * colors.length)]};
+      border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+      left: ${centerX}px;
+      top: ${centerY}px;
+      pointer-events: none;
+      z-index: 9999;
+    `;
+    document.body.appendChild(particle);
+
+    const angle = (Math.PI * 2 * i) / 24 + (Math.random() - 0.5);
+    const velocity = Math.random() * 120 + 60;
+    const tx = Math.cos(angle) * velocity;
+    const ty = Math.sin(angle) * velocity - 40;
+    const rotation = Math.random() * 720 - 360;
+
+    particle.animate([
+      { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
+      { transform: `translate(${tx}px, ${ty + 80}px) rotate(${rotation}deg) scale(0)`, opacity: 0 }
+    ], {
+      duration: 800 + Math.random() * 400,
+      easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+    }).onfinish = () => particle.remove();
+  }
 }
 
 // ─── Start ───
